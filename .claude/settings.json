@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(start http://localhost:5180)",
+      "Bash(start http://localhost:5181)",
+      "Bash(start http://localhost:5182)",
+      "Bash(start http://localhost:5183)",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":5182\")",
+      "Bash(findstr LISTENING)",
+      "Bash(taskkill /PID 1848 /F)",
+      "Bash(cmd /c \"taskkill /PID 1848 /F\")",
+      "Bash(cmd /c \"netstat -ano | findstr :5182\")",
+      "Bash(cmd /c \"netstat -ano | findstr LISTEN | findstr 5182\")",
+      "Bash(node_modules/.bin/vite.cmd)",
+      "Bash(cmd /c \"taskkill /PID 1848 /F 2>&1\")",
+      "Bash(cmd /c taskkill /PID 1848 /F)",
+      "Bash(powershell -Command \"Stop-Process -Id 1848 -Force; Write-Host 'done'\")",
+      "Bash(findstr :5182)",
+      "Bash(taskkill /PID 11480 /F)",
+      "Bash(cmd /c \"taskkill /PID 11480 /F\")",
+      "Bash(cmd /c taskkill /PID 11480 /F)",
+      "Bash(powershell -Command \"Stop-Process -Id 11480 -Force\")"
+    ]
+  }
+}

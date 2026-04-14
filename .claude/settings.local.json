@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(mkdir -p c:/Users/user/Documents/RMC-Delivery-System/../rmc_backup)",
+      "Bash(cp -r c:/Users/user/Documents/RMC-Delivery-System/src c:/Users/user/Documents/rmc_backup/)"
+    ]
+  }
+}
