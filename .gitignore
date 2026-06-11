@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# React Router build artifacts
+.react-router
+build
+
+# Local SQLite database
+apps/worker/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# env
+.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
