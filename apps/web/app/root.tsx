@@ -3,7 +3,15 @@ import { useState } from 'react';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from 'react-router';
 import './app.css';
 
+// 신형 키(ncpKeyId, 2025년 이후 NCP Maps)가 있으면 우선 사용, 없으면 구형(ncpClientId)
+const NAVER_KEY_ID = import.meta.env.VITE_NAVER_MAPS_KEY_ID as string | undefined;
 const NAVER_CLIENT_ID = import.meta.env.VITE_NAVER_MAPS_CLIENT_ID as string | undefined;
+
+const NAVER_SCRIPT_SRC = NAVER_KEY_ID
+  ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${NAVER_KEY_ID}`
+  : NAVER_CLIENT_ID
+    ? `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${NAVER_CLIENT_ID}`
+    : null;
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,11 +22,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <title>레미콘 운송 관리</title>
         <Meta />
         <Links />
-        {NAVER_CLIENT_ID && (
-          <script
-            src={`https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${NAVER_CLIENT_ID}`}
-          />
-        )}
+        {NAVER_SCRIPT_SRC && <script src={NAVER_SCRIPT_SRC} />}
       </head>
       <body className="bg-slate-100 text-slate-900">
         {children}
