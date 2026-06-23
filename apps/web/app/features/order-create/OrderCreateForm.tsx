@@ -1,5 +1,6 @@
 // 현장 주문 등록 폼 — RHF + Zod (유선 주문을 대체하는 정형 입력)
 
+import { useState } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -10,6 +11,7 @@ import { orderApi } from '~/entities/order/api';
 import { usePlants } from '~/entities/master/queries';
 import { ApiError } from '~/shared/api/client';
 import { useAuthStore } from '~/shared/lib/auth.store';
+import { toast } from '~/shared/lib/toast.store';
 import { Button, Card, ErrorState, Field, inputCls } from '~/shared/ui';
 
 const formSchema = z.object({
@@ -40,6 +42,8 @@ export function OrderCreateForm() {
   const { siteId } = useAuthStore();
   const { data: plants = [] } = usePlants();
 
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   const {
     register,
     handleSubmit,
@@ -67,6 +71,7 @@ export function OrderCreateForm() {
       }),
     onSuccess: (order) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('주문을 등록했습니다');
       navigate(`/site/orders/${order.id}`);
     },
   });
@@ -101,26 +106,39 @@ export function OrderCreateForm() {
           </div>
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="총 수량 (m³)" error={errors.totalQuantityM3?.message}>
-            <input type="number" step="0.5" className={inputCls} placeholder="36" {...register('totalQuantityM3')} />
-          </Field>
-          <Field label="배차 간격 (분)" error={errors.truckIntervalMin?.message}>
-            <input type="number" className={inputCls} {...register('truckIntervalMin')} />
-          </Field>
-        </div>
-
-        <Field label="납품 희망 일시" error={errors.requestedAt?.message}>
-          <input type="datetime-local" className={inputCls} {...register('requestedAt')} />
+        <Field label="총 수량 (m³)" error={errors.totalQuantityM3?.message}>
+          <input type="number" step="0.5" className={inputCls} placeholder="36" {...register('totalQuantityM3')} />
         </Field>
 
-        <Field label="요청 사항 (선택)" error={errors.notes?.message}>
-          <textarea
-            className={`${inputCls} h-20 resize-none`}
-            placeholder="예) 지하 1층 바닥 타설, 펌프카 1대 대기"
-            {...register('notes')}
-          />
-        </Field>
+        {/* 상세 옵션 — 기본값으로 충분하므로 필요할 때만 펼친다 */}
+        <button
+          type="button"
+          className="mb-3 text-xs font-semibold text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+          onClick={() => setShowAdvanced((v) => !v)}
+        >
+          {showAdvanced ? '상세 옵션 닫기' : '상세 옵션 (배차 간격 · 납품 시각 · 요청 사항)'}
+        </button>
+
+        {showAdvanced && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="배차 간격 (분)" error={errors.truckIntervalMin?.message}>
+                <input type="number" className={inputCls} {...register('truckIntervalMin')} />
+              </Field>
+              <Field label="납품 희망 일시" error={errors.requestedAt?.message}>
+                <input type="datetime-local" className={inputCls} {...register('requestedAt')} />
+              </Field>
+            </div>
+
+            <Field label="요청 사항 (선택)" error={errors.notes?.message}>
+              <textarea
+                className={`${inputCls} h-20 resize-none`}
+                placeholder="예) 지하 1층 바닥 타설, 펌프카 1대 대기"
+                {...register('notes')}
+              />
+            </Field>
+          </>
+        )}
 
         {create.isError && (
           <div className="mb-3">
@@ -130,12 +148,12 @@ export function OrderCreateForm() {
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => navigate(-1)}>
+        <div className="mt-3 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => navigate(-1)} disabled={create.isPending}>
             취소
           </Button>
-          <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? '등록 중...' : '주문 등록'}
+          <Button type="submit" loading={create.isPending}>
+            주문 등록
           </Button>
         </div>
       </form>

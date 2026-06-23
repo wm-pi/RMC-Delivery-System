@@ -83,6 +83,7 @@ Notes:
 | POST | /orders/:id/adjust | 수량(대수) 조절 (현장) | adjustOrderSchema, 배차된 수량 미만 불가 |
 | POST | /orders/:id/messages | 메시지 (통화 대체) | orderMessageSchema |
 | POST | /orders/:id/deliveries | 차량 배정 = 회전 생성 (업체) | assignDeliverySchema, 잔여/적재량 검증 |
+| POST | /orders/:id/deliveries/auto | 일괄 배차 — 잔여 수량을 가용 차량으로 자동 채움 (업체) | autoAssignSchema(trackingMode), 적재량 큰 차량부터, DeliveryDto[] 반환 |
 
 ### 배차 (Delivery)
 
@@ -90,11 +91,11 @@ Notes:
 |---|---|---|---|
 | GET | /deliveries/active | 활성 배차 + 위치/ETA (지도용) | ActiveDeliveryDto[](trackingMode·etaSource·stale 포함), 2초 폴링 |
 | GET | /deliveries/:id/track-link | 기사 추적 링크 발급 (업체, gps 모드만) | `{ token, path }` |
-| POST | /deliveries/:id/load | 상차 시작 (업체) | assigned→loading |
-| POST | /deliveries/:id/dispatch | 출발 (업체) | loading→in_transit, 주문 in_progress 전환 |
-| POST | /deliveries/:id/pouring-start | 타설 시작 (현장) | arrived→pouring |
-| POST | /deliveries/:id/pouring-end | 타설 완료 (현장) | pouring→returning |
+| POST | /deliveries/:id/depart | 출발 = 상차+출발 통합 (업체) | assigned/loading→in_transit, dispatched_at 기록, 주문 in_progress 전환 |
+| POST | /deliveries/:id/pour-complete | 타설 완료 = 타설 시작+완료 통합 (현장) | arrived/pouring→returning, pouring_started_at(없으면 도착시각)·pouring_ended_at 기록 |
 | POST | /deliveries/:id/cancel | 배차 취소 (업체) | assigned/loading만 |
+
+> UX 클릭 최소화: 상차→출발 2단계는 `depart` 1콜로, 타설 시작→완료 2단계는 `pour-complete` 1콜로 통합했다(상태 모델·타임스탬프는 서버에서 보존). 기존 load/dispatch/pouring-start/pouring-end 엔드포인트는 제거됨.
 
 배차 생성(`/orders/:id/deliveries`)은 `trackingMode`(gps|estimated, 기본 estimated)를 받는다.
 - **estimated**: 서버 시뮬레이터(`delivery.simulator.ts`)가 지도거리 기반으로 이동·도착·복귀를 자동 수행.

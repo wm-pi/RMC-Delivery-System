@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from 'react-router';
+import { Toaster } from '~/shared/ui';
 import './app.css';
 
 // 네이버 지도 SDK는 전역에서 선로드하지 않는다. 지도 화면(LiveMap)이 마운트될 때만
@@ -18,6 +19,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body className="bg-slate-100 text-slate-900">
         {children}
+        <Toaster />
         <ScrollRestoration />
         <Scripts />
       </body>

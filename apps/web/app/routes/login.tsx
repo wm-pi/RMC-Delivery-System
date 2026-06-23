@@ -10,6 +10,14 @@ import { Button, ErrorState, inputCls } from '~/shared/ui';
 
 const HOME_BY_ROLE = { site: '/site', plant: '/plant' } as const;
 
+/** 프로토타입 데모 계정 — 클릭 한 번으로 로그인 */
+const DEMO_ACCOUNTS = [
+  { username: 'site1', label: '🏗️ 현장 담당자', desc: '주문·타설 관리' },
+  { username: 'plant1', label: '🏭 덕원레미콘', desc: '접수·배차' },
+  { username: 'plant2', label: '🏭 한라레미콘', desc: '접수·배차' },
+];
+const DEMO_PASSWORD = '1234';
+
 export default function Login() {
   const navigate = useNavigate();
   const { token, role, login } = useAuthStore();
@@ -22,7 +30,8 @@ export default function Login() {
   }, [token, role, navigate]);
 
   const submit = useMutation({
-    mutationFn: () => api.post<LoginResponseDto>('/auth/login', { username, password }),
+    mutationFn: (creds: { username: string; password: string }) =>
+      api.post<LoginResponseDto>('/auth/login', creds),
     onSuccess: (res) => {
       login(res.token, res.user);
       navigate(HOME_BY_ROLE[res.user.role], { replace: true });
@@ -32,7 +41,7 @@ export default function Login() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!username.trim() || !password) return;
-    submit.mutate();
+    submit.mutate({ username: username.trim(), password });
   }
 
   return (
@@ -72,14 +81,31 @@ export default function Login() {
           </div>
         )}
 
-        <Button type="submit" className="w-full" disabled={submit.isPending || !username.trim() || !password}>
-          {submit.isPending ? '로그인 중...' : '로그인'}
+        <Button
+          type="submit"
+          className="w-full"
+          loading={submit.isPending}
+          disabled={!username.trim() || !password}
+        >
+          로그인
         </Button>
 
-        <div className="mt-4 rounded-md bg-slate-900/60 p-3 text-xs text-slate-400">
-          <div className="mb-1 font-semibold text-slate-300">데모 계정 (비밀번호 모두 1234)</div>
-          <div>🏗️ 현장: site1</div>
-          <div>🏭 업체: plant1 (덕원레미콘), plant2 (한라레미콘)</div>
+        <div className="mt-5 border-t border-slate-700 pt-4">
+          <div className="mb-2 text-xs font-semibold text-slate-300">데모 계정 — 클릭 한 번으로 로그인</div>
+          <div className="grid gap-2">
+            {DEMO_ACCOUNTS.map((acc) => (
+              <button
+                key={acc.username}
+                type="button"
+                disabled={submit.isPending}
+                onClick={() => submit.mutate({ username: acc.username, password: DEMO_PASSWORD })}
+                className="flex items-center justify-between rounded-md border border-slate-600 bg-slate-700/40 px-3 py-2 text-left text-sm text-slate-100 transition-colors hover:border-blue-400 hover:bg-slate-700 disabled:opacity-50"
+              >
+                <span className="font-semibold">{acc.label}</span>
+                <span className="text-xs text-slate-400">{acc.desc}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </form>
 

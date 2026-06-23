@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import {
   adjustOrderSchema,
   assignDeliverySchema,
+  autoAssignSchema,
   createOrderSchema,
   orderMessageSchema,
   rejectOrderSchema,
@@ -66,4 +67,12 @@ orderRoute.post('/:id/deliveries', async (c) => {
   const parsed = assignDeliverySchema.safeParse(body);
   if (!parsed.success) return validationError(c, parsed.error);
   return created(c, DeliveryService.assign(getUser(c), Number(c.req.param('id')), parsed.data));
+});
+
+/** 업체: 잔여 수량을 가용 차량으로 한 번에 채우는 일괄 배차 */
+orderRoute.post('/:id/deliveries/auto', async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const parsed = autoAssignSchema.safeParse(body ?? {});
+  if (!parsed.success) return validationError(c, parsed.error);
+  return created(c, DeliveryService.assignAuto(getUser(c), Number(c.req.param('id')), parsed.data.trackingMode));
 });

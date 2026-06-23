@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '~/shared/api/client';
+import { toast } from '~/shared/lib/toast.store';
 import { vehicleApi } from './api';
 
 export const vehicleKeys = {
@@ -16,13 +17,17 @@ export function useVehicleList(plantId?: number) {
 
 export function useVehicleAction<TArgs extends unknown[]>(
   fn: (...args: TArgs) => Promise<unknown>,
+  successMessage?: string,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: TArgs) => fn(...args),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vehicles'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+      if (successMessage) toast.success(successMessage);
+    },
     onError: (err) => {
-      alert(err instanceof ApiError ? err.message : '요청에 실패했습니다');
+      toast.error(err instanceof ApiError ? err.message : '요청에 실패했습니다');
     },
   });
 }

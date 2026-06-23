@@ -7,6 +7,7 @@ import { deliveryApi } from '~/entities/delivery/api';
 import { useDeliveryAction } from '~/entities/delivery/queries';
 import { DeliveryStatusBadge } from '~/entities/delivery/status';
 import { ApiError } from '~/shared/api/client';
+import { toast } from '~/shared/lib/toast.store';
 import { Button, EmptyState } from '~/shared/ui';
 
 /** gps 모드 배차의 기사 추적 링크를 발급해 클립보드에 복사 (업체용) */
@@ -21,72 +22,54 @@ function TrackLinkButton({ deliveryId }: { deliveryId: number }) {
       const url = `${globalThis.location.origin}${path}`;
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      toast.success('기사 추적 링크를 복사했습니다');
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : '링크 발급에 실패했습니다');
+      toast.error(e instanceof ApiError ? e.message : '링크 발급에 실패했습니다');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Button size="sm" variant="secondary" onClick={copy} disabled={busy}>
+    <Button size="sm" variant="secondary" onClick={copy} loading={busy}>
       {copied ? '복사됨 ✓' : '기사 링크'}
     </Button>
   );
 }
 
-function DeliveryActions({ delivery, role }: { delivery: DeliveryDto; role: UserRole }) {
-  const load = useDeliveryAction(deliveryApi.load);
-  const dispatch = useDeliveryAction(deliveryApi.dispatch);
-  const pouringStart = useDeliveryAction(deliveryApi.pouringStart);
-  const pouringEnd = useDeliveryAction(deliveryApi.pouringEnd);
-  const cancel = useDeliveryAction(deliveryApi.cancel);
+function DeliveryActions({ delivery, role }: { readonly delivery: DeliveryDto; readonly role: UserRole }) {
+  // 출발 = 상차+출발 통합(1클릭), 타설 완료 = 타설 시작+완료 통합(1클릭)
+  const depart = useDeliveryAction(deliveryApi.depart, `${delivery.seq}호차 출발 처리했습니다`);
+  const pourComplete = useDeliveryAction(deliveryApi.pourComplete, `${delivery.seq}호차 타설 완료`);
+  const cancel = useDeliveryAction(deliveryApi.cancel, `${delivery.seq}호차 배차를 취소했습니다`);
 
-  if (role === 'plant') {
-    if (delivery.status === 'assigned') {
-      return (
-        <div className="flex gap-1.5">
-          <Button size="sm" onClick={() => load.mutate([delivery.id])} disabled={load.isPending}>
-            상차 시작
-          </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => {
-              if (confirm(`${delivery.seq}호차 배차를 취소할까요?`)) cancel.mutate([delivery.id]);
-            }}
-            disabled={cancel.isPending}
-          >
-            취소
-          </Button>
-        </div>
-      );
-    }
-    if (delivery.status === 'loading') {
-      return (
-        <Button size="sm" variant="success" onClick={() => dispatch.mutate([delivery.id])} disabled={dispatch.isPending}>
+  // 업체: 출발 전(배정/상차)이면 출발 1클릭 + 취소
+  if (role === 'plant' && (delivery.status === 'assigned' || delivery.status === 'loading')) {
+    return (
+      <div className="flex gap-1.5">
+        <Button size="sm" variant="success" onClick={() => depart.mutate([delivery.id])} loading={depart.isPending}>
           출발
         </Button>
-      );
-    }
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => cancel.mutate([delivery.id])}
+          loading={cancel.isPending}
+        >
+          취소
+        </Button>
+      </div>
+    );
   }
 
-  if (role === 'site') {
-    if (delivery.status === 'arrived') {
-      return (
-        <Button size="sm" variant="warning" onClick={() => pouringStart.mutate([delivery.id])} disabled={pouringStart.isPending}>
-          타설 시작
-        </Button>
-      );
-    }
-    if (delivery.status === 'pouring') {
-      return (
-        <Button size="sm" variant="success" onClick={() => pouringEnd.mutate([delivery.id])} disabled={pouringEnd.isPending}>
-          타설 완료
-        </Button>
-      );
-    }
+  // 현장: 도착하면 타설 완료 1클릭 (타설 끝났을 때 한 번만 누름)
+  if (role === 'site' && (delivery.status === 'arrived' || delivery.status === 'pouring')) {
+    return (
+      <Button size="sm" variant="success" onClick={() => pourComplete.mutate([delivery.id])} loading={pourComplete.isPending}>
+        타설 완료
+      </Button>
+    );
   }
 
   return null;

@@ -18,8 +18,8 @@ deliveryRoute.get('/:id/route', async (c) =>
   ok(c, await DeliveryService.getRoute(getUser(c), Number(c.req.param('id')))),
 );
 
-deliveryRoute.post('/:id/load', (c) => ok(c, DeliveryService.startLoading(getUser(c), Number(c.req.param('id')))));
-deliveryRoute.post('/:id/dispatch', (c) => ok(c, DeliveryService.dispatch(getUser(c), Number(c.req.param('id')))));
-deliveryRoute.post('/:id/pouring-start', (c) => ok(c, DeliveryService.startPouring(getUser(c), Number(c.req.param('id')))));
-deliveryRoute.post('/:id/pouring-end', (c) => ok(c, DeliveryService.endPouring(getUser(c), Number(c.req.param('id')))));
+// 업체: 출발 (상차+출발 통합 — 클릭 최소화)
+deliveryRoute.post('/:id/depart', (c) => ok(c, DeliveryService.depart(getUser(c), Number(c.req.param('id')))));
+// 현장: 타설 완료 (타설 시작+완료 통합 — 클릭 최소화)
+deliveryRoute.post('/:id/pour-complete', (c) => ok(c, DeliveryService.pourComplete(getUser(c), Number(c.req.param('id')))));
 deliveryRoute.post('/:id/cancel', (c) => ok(c, DeliveryService.cancel(getUser(c), Number(c.req.param('id')))));

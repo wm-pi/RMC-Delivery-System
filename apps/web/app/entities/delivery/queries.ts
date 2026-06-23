@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '~/shared/api/client';
+import { toast } from '~/shared/lib/toast.store';
 import { orderKeys } from '~/entities/order/queries';
 import { deliveryApi } from './api';
 
@@ -16,9 +17,10 @@ export function useActiveDeliveries(intervalMs = 2000) {
   });
 }
 
-/** 배차 단위 액션 — 주문/배차 캐시 동시 무효화 */
+/** 배차 단위 액션 — 주문/배차 캐시 동시 무효화. successMessage가 있으면 성공 토스트 */
 export function useDeliveryAction<TArgs extends unknown[]>(
   fn: (...args: TArgs) => Promise<unknown>,
+  successMessage?: string,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -27,9 +29,10 @@ export function useDeliveryAction<TArgs extends unknown[]>(
       queryClient.invalidateQueries({ queryKey: orderKeys.all });
       queryClient.invalidateQueries({ queryKey: deliveryKeys.active });
       queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+      if (successMessage) toast.success(successMessage);
     },
     onError: (err) => {
-      alert(err instanceof ApiError ? err.message : '요청에 실패했습니다');
+      toast.error(err instanceof ApiError ? err.message : '요청에 실패했습니다');
     },
   });
 }

@@ -98,6 +98,37 @@ export const DeliveryService = {
     return delivery;
   },
 
+  /**
+   * 업체: 잔여 수량을 가용 차량으로 한 번에 채우는 일괄 배차(클릭 최소화).
+   * 적재량 큰 차량부터 잔여 수량이 0이 될 때까지 자동 배정한다.
+   * 개별 검증은 assign을 재사용한다(매 회 잔여 수량 재계산).
+   */
+  assignAuto(actor: AuthUserDto, orderId: number, trackingMode: AssignDeliveryInput['trackingMode']): DeliveryDto[] {
+    assertRole(actor, 'plant', '일괄 배차');
+    const { order, remainingQuantityM3 } = OrderService.assertDispatchable(orderId);
+    assertOrderOwnership(actor, order);
+    if (remainingQuantityM3 <= 1e-9) {
+      throw AppError.invalidState('주문 수량이 모두 배차되었습니다. 현장에 수량 조절을 요청하세요.');
+    }
+    const available = VehicleService.list(actor)
+      .filter((v) => v.status === 'available')
+      .sort((a, b) => b.capacityM3 - a.capacityM3);
+    if (available.length === 0) {
+      throw AppError.invalidState('배차할 수 있는 대기 차량이 없습니다.');
+    }
+
+    const created: DeliveryDto[] = [];
+    let remaining = remainingQuantityM3;
+    for (const vehicle of available) {
+      if (remaining <= 1e-9) break;
+      const qty = Math.round(Math.min(vehicle.capacityM3, remaining) * 10) / 10;
+      if (qty <= 0) break;
+      created.push(this.assign(actor, orderId, { vehicleId: vehicle.id, quantityM3: qty, trackingMode }));
+      remaining -= qty;
+    }
+    return created;
+  },
+
   /** 현재 운행 구간의 도로 경로 (지도 경로선/마커 이동용) — 주문 소유자만 */
   async getRoute(actor: AuthUserDto, id: number): Promise<RoutePathDto> {
     const delivery = this.getById(id);
@@ -122,18 +153,15 @@ export const DeliveryService = {
     return { token, path: `/track/${id}?t=${token}` };
   },
 
-  /** 업체: 상차 시작 */
-  startLoading(actor: AuthUserDto, id: number): DeliveryDto {
-    const delivery = loadOwnedDelivery(actor, id, 'plant', '상차 처리');
-    assertTransition(delivery.status, 'loading');
-    DeliveryRepository.updateStatus(id, 'loading');
-    return this.getById(id);
-  },
-
-  /** 업체: 출발 — 운송 시작, 주문을 운송 중으로 전환 */
-  dispatch(actor: AuthUserDto, id: number): DeliveryDto {
+  /**
+   * 업체: 출발 — 상차+출발을 한 번에 처리(클릭 최소화).
+   * 배정(assigned) 또는 상차 중(loading) 상태에서 바로 운송 중으로 전환한다.
+   */
+  depart(actor: AuthUserDto, id: number): DeliveryDto {
     const delivery = loadOwnedDelivery(actor, id, 'plant', '출발 처리');
-    assertTransition(delivery.status, 'in_transit');
+    if (delivery.status !== 'assigned' && delivery.status !== 'loading') {
+      throw AppError.invalidState(`출발할 수 없는 상태입니다 (${delivery.status})`);
+    }
     DeliveryRepository.updateStatus(id, 'in_transit', { dispatched_at: nowIso() });
     OrderService.markInProgress(delivery.orderId);
     OrderService.addEvent(
@@ -145,23 +173,23 @@ export const DeliveryService = {
     return this.getById(id);
   },
 
-  /** 현장: 타설 시작 */
-  startPouring(actor: AuthUserDto, id: number): DeliveryDto {
-    const delivery = loadOwnedDelivery(actor, id, 'site', '타설 시작 처리');
-    assertTransition(delivery.status, 'pouring');
-    DeliveryRepository.updateStatus(id, 'pouring', { pouring_started_at: nowIso() });
-    OrderService.addEvent(delivery.orderId, 'site', 'status', `${delivery.seq}호차 타설 시작`);
-    return this.getById(id);
-  },
-
-  /** 현장: 타설 완료 — 차량은 공장으로 복귀 시작 */
-  endPouring(actor: AuthUserDto, id: number): DeliveryDto {
+  /**
+   * 현장: 타설 완료 — 타설 시작+완료를 한 번에 처리(클릭 최소화).
+   * 도착(arrived) 상태에서 바로 복귀로 전환한다. 도착~지금을 타설 구간으로 본다.
+   */
+  pourComplete(actor: AuthUserDto, id: number): DeliveryDto {
     const delivery = loadOwnedDelivery(actor, id, 'site', '타설 완료 처리');
-    assertTransition(delivery.status, 'returning');
+    if (delivery.status !== 'arrived' && delivery.status !== 'pouring') {
+      throw AppError.invalidState(`타설 완료할 수 없는 상태입니다 (${delivery.status})`);
+    }
     DeliveryRepository.updateStatus(
       id,
       'returning',
-      { pouring_ended_at: nowIso() },
+      {
+        // 타설 시작 시각이 없으면 도착 시각(없으면 지금)을 시작으로 간주
+        pouring_started_at: delivery.pouringStartedAt ?? delivery.arrivedAt ?? nowIso(),
+        pouring_ended_at: nowIso(),
+      },
       // 복귀 구간은 progress 0부터 다시 시작
       { lat: delivery.lat ?? 0, lng: delivery.lng ?? 0, progress: 0 },
     );
