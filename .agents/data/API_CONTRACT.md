@@ -39,9 +39,20 @@ Notes:
 
 ## API Notes
 
-> 공통: base `/api`, 인증 없음(로컬 프로토타입). 성공 응답은 body 그대로,
-> 에러 응답은 `{ message, code, detail? }` (VALIDATION_ERROR 400 / NOT_FOUND 404 / CONFLICT·INVALID_STATE 409 / INTERNAL_ERROR 500).
+> 공통: base `/api`. **`/api/auth/login`을 제외한 모든 엔드포인트는 `Authorization: Bearer <JWT>` 필수.**
+> 토큰 없음/만료 → 401, 역할·소유권 위반 → 403. 성공 응답은 body 그대로,
+> 에러 응답은 `{ message, code, detail? }` (VALIDATION_ERROR 400 / UNAUTHORIZED 401 / FORBIDDEN 403 / NOT_FOUND 404 / CONFLICT·INVALID_STATE 409 / INTERNAL_ERROR 500).
 > 요청/응답 타입과 Zod 스키마의 단일 소스는 `packages/shared`다.
+
+### 인증 (Auth)
+
+| Method | Endpoint | Purpose | 비고 |
+|---|---|---|---|
+| POST | /auth/login | 로그인 → `{ token, user }` | 공개. loginSchema(username/password) |
+| GET | /auth/me | 현재 사용자 (토큰 검증/복원) | Bearer 필요 |
+
+테넌트 격리: 현장(site) 계정은 자기 현장 주문만, 업체(plant) 계정은 자기 공장 주문/차량만 조회·조작 가능(서버 강제).
+주문 생성 시 siteId, 차량 등록 시 plantId는 토큰에서 강제되며 클라이언트 값은 무시한다. 데모 계정: site1 / plant1 / plant2 (비밀번호 1234).
 
 ### 기준정보
 
@@ -77,13 +88,26 @@ Notes:
 
 | Method | Endpoint | Purpose | 비고 |
 |---|---|---|---|
-| GET | /deliveries/active | 활성 배차 + 위치/ETA (지도용) | ActiveDeliveryDto[], 2초 폴링 |
-| GET | /deliveries/:id | 배차 단건 | - |
+| GET | /deliveries/active | 활성 배차 + 위치/ETA (지도용) | ActiveDeliveryDto[](trackingMode·etaSource·stale 포함), 2초 폴링 |
+| GET | /deliveries/:id/track-link | 기사 추적 링크 발급 (업체, gps 모드만) | `{ token, path }` |
 | POST | /deliveries/:id/load | 상차 시작 (업체) | assigned→loading |
 | POST | /deliveries/:id/dispatch | 출발 (업체) | loading→in_transit, 주문 in_progress 전환 |
 | POST | /deliveries/:id/pouring-start | 타설 시작 (현장) | arrived→pouring |
 | POST | /deliveries/:id/pouring-end | 타설 완료 (현장) | pouring→returning |
 | POST | /deliveries/:id/cancel | 배차 취소 (업체) | assigned/loading만 |
 
-도착(arrived)·복귀(returned) 전이는 서버 시뮬레이터(`delivery.simulator.ts`)가 자동 수행한다.
-프론트엔드 사용처: `apps/web/app/entities/*/api.ts` + TanStack Query 훅(`queries.ts`).
+배차 생성(`/orders/:id/deliveries`)은 `trackingMode`(gps|estimated, 기본 estimated)를 받는다.
+- **estimated**: 서버 시뮬레이터(`delivery.simulator.ts`)가 지도거리 기반으로 이동·도착·복귀를 자동 수행.
+- **gps**: 기사 폰 위치 핑이 위치를 결정, 지오펜스(`GEOFENCE_M`) 진입 시 도착/복귀 자동 전이. 시뮬레이터 대상에서 제외.
+
+ETA 산출은 네이버 Directions API 우선(환경변수 `NAVER_DIRECTIONS_KEY_ID/KEY` 설정 시), 미설정/실패 시 직선거리(haversine) 폴백 — 응답의 `etaSource`로 구분.
+
+### 기사 추적 (Track, 공개)
+
+| Method | Endpoint | Purpose | 인증 |
+|---|---|---|---|
+| GET | /track/:id?t=<토큰> | 기사 페이지 부트스트랩(배차/목적지) | 서명 기사 토큰(쿼리 `t`) |
+| POST | /track/:id/location?t=<토큰> | 기사 폰 위치 핑 `{lat,lng}` | 서명 기사 토큰 |
+
+기사 토큰은 계정 없이 특정 배차에만 종속(JWT `purpose:'driver'`, `sub:deliveryId`, 기본 24h). 종료 상태·비 gps 배차에는 거부.
+프론트엔드: 공개 라우트 `/track/:deliveryId`(기사 모바일), 그 외 `apps/web/app/entities/*/api.ts` + TanStack Query 훅.

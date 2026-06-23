@@ -1,12 +1,8 @@
-import type { ActiveDeliveryDto, DeliveryDto, DeliveryStatus } from '@rmc/shared';
-import {
-  ACTIVE_DELIVERY_STATUSES,
-  AVERAGE_SPEED_KMH,
-  calcTotalMinutes,
-  haversineDistance,
-} from '@rmc/shared';
+import type { ActiveDeliveryDto, DeliveryDto, DeliveryStatus, TrackingMode } from '@rmc/shared';
+import { ACTIVE_DELIVERY_STATUSES, AVERAGE_SPEED_KMH } from '@rmc/shared';
 import { getDb, nowIso } from '../../platform/db/client';
 import { env } from '../../platform/env/env';
+import { estimateRoute } from '../../platform/directions/route-info';
 
 export interface DeliveryRow {
   id: number;
@@ -25,11 +21,13 @@ export interface DeliveryRow {
   lat: number | null;
   lng: number | null;
   progress: number;
+  tracking_mode: TrackingMode;
+  last_ping_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-interface ActiveDeliveryRow extends DeliveryRow {
+export interface ActiveDeliveryRow extends DeliveryRow {
   order_no: string;
   concrete_grade: string;
   plant_id: number;
@@ -78,6 +76,8 @@ function toDto(row: DeliveryRow): DeliveryDto {
     lat: row.lat,
     lng: row.lng,
     progress: row.progress,
+    trackingMode: row.tracking_mode,
+    lastPingAt: row.last_ping_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -88,13 +88,20 @@ function toActiveDto(row: ActiveDeliveryRow): ActiveDeliveryDto {
   const destination = { lat: row.site_lat, lng: row.site_lng };
   // 복귀 중에는 현장 → 공장 방향
   const [from, to] = row.status === 'returning' ? [destination, origin] : [origin, destination];
-  const totalKm = haversineDistance(from, to);
   const moving = row.status === 'in_transit' || row.status === 'returning';
-  const remainingKm = moving ? totalKm * (1 - Math.min(row.progress, 1)) : 0;
-  // ETA는 시뮬레이션 배속을 반영한 실제 체감 시간
-  const etaMinutes = moving
-    ? calcTotalMinutes(remainingKm, AVERAGE_SPEED_KMH * env.simMultiplier)
-    : 0;
+
+  const route = estimateRoute(from, to);
+  const remainingFrac = moving ? 1 - Math.min(row.progress, 1) : 0;
+  const remainingKm = route.km * remainingFrac;
+  // estimated 모드는 시뮬레이션 배속만큼 압축된 체감 ETA, gps 모드는 실제 ETA
+  const compress = row.tracking_mode === 'estimated' ? env.simMultiplier : 1;
+  const etaMinutes = moving ? (route.durationMin * remainingFrac) / compress : 0;
+
+  const stale =
+    row.tracking_mode === 'gps' &&
+    moving &&
+    (!row.last_ping_at || Date.now() - new Date(row.last_ping_at).getTime() > env.gpsStaleMs);
+
   return {
     ...toDto(row),
     orderNo: row.order_no,
@@ -105,10 +112,12 @@ function toActiveDto(row: ActiveDeliveryRow): ActiveDeliveryDto {
     siteName: row.site_name,
     origin,
     destination,
-    totalKm,
+    totalKm: route.km,
     remainingKm,
     etaMinutes,
-    currentSpeedKmh: moving ? AVERAGE_SPEED_KMH : 0,
+    currentSpeedKmh: moving && !stale ? AVERAGE_SPEED_KMH : 0,
+    etaSource: moving ? route.source : 'none',
+    stale,
   };
 }
 
@@ -135,11 +144,21 @@ export const DeliveryRepository = {
     return rows.map(toActiveDto);
   },
 
-  /** 시뮬레이터가 위치를 갱신할 이동 중 배차 (경로 좌표 포함) */
+  /** 시뮬레이터가 위치를 갱신할 이동 중 배차 — estimated 모드만 (gps는 실제 핑이 위치를 결정) */
   findMoving(): ActiveDeliveryRow[] {
     return getDb()
-      .prepare(`${ACTIVE_SELECT} where d.status in ('in_transit','returning')`)
+      .prepare(
+        `${ACTIVE_SELECT} where d.status in ('in_transit','returning') and d.tracking_mode = 'estimated'`,
+      )
       .all() as unknown as ActiveDeliveryRow[];
+  },
+
+  /** 지오펜스 판정용 — 경로 좌표 포함 단건 조회 */
+  findActiveRowById(id: number): ActiveDeliveryRow | null {
+    const row = getDb().prepare(`${ACTIVE_SELECT} where d.id = ?`).get(id) as unknown as
+      | ActiveDeliveryRow
+      | undefined;
+    return row ?? null;
   },
 
   nextSeq(orderId: number): number {
@@ -156,15 +175,26 @@ export const DeliveryRepository = {
     quantityM3: number;
     lat: number;
     lng: number;
+    trackingMode: TrackingMode;
   }): DeliveryDto {
     const now = nowIso();
     const result = getDb()
       .prepare(
         `insert into deliveries
-           (order_id, vehicle_id, seq, quantity_m3, status, lat, lng, progress, created_at, updated_at)
-         values (?, ?, ?, ?, 'assigned', ?, ?, 0, ?, ?)`,
+           (order_id, vehicle_id, seq, quantity_m3, status, lat, lng, progress, tracking_mode, created_at, updated_at)
+         values (?, ?, ?, ?, 'assigned', ?, ?, 0, ?, ?, ?)`,
       )
-      .run(input.orderId, input.vehicleId, input.seq, input.quantityM3, input.lat, input.lng, now, now);
+      .run(
+        input.orderId,
+        input.vehicleId,
+        input.seq,
+        input.quantityM3,
+        input.lat,
+        input.lng,
+        input.trackingMode,
+        now,
+        now,
+      );
     return this.findById(Number(result.lastInsertRowid))!;
   },
 
@@ -196,5 +226,15 @@ export const DeliveryRepository = {
     getDb()
       .prepare('update deliveries set lat = ?, lng = ?, progress = ?, updated_at = ? where id = ?')
       .run(lat, lng, progress, nowIso(), id);
+  },
+
+  /** gps 핑 기록 — 위치 + 진행률 + 핑 시각 */
+  recordPing(id: number, lat: number, lng: number, progress: number): void {
+    const now = nowIso();
+    getDb()
+      .prepare(
+        'update deliveries set lat = ?, lng = ?, progress = ?, last_ping_at = ?, updated_at = ? where id = ?',
+      )
+      .run(lat, lng, progress, now, now, id);
   },
 };

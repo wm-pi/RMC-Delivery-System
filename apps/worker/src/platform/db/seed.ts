@@ -1,6 +1,7 @@
 // 최초 부팅(빈 DB) 시 데모 기준정보 + 진행 중 주문 1건을 시드한다
 
 import { getDb, nowIso } from './client';
+import { hashPassword } from '../auth/password';
 
 export function seedIfEmpty(): void {
   const db = getDb();
@@ -95,4 +96,32 @@ export function seedIfEmpty(): void {
   );
 
   console.log('[seed] demo data inserted');
+}
+
+/**
+ * 데모 로그인 계정 시드 — users가 비어 있을 때만.
+ * 기존(이미 기준정보가 시드된) DB에도 계정을 추가할 수 있도록 별도 idempotent 함수로 둔다.
+ */
+export function seedUsersIfEmpty(): void {
+  const db = getDb();
+  const { cnt } = db.prepare('select count(*) as cnt from users').get() as { cnt: number };
+  if (cnt > 0) return;
+
+  const site = db.prepare('select id from sites order by id limit 1').get() as
+    | { id: number }
+    | undefined;
+  const plants = db.prepare('select id from plants order by id').all() as { id: number }[];
+  if (!site || plants.length === 0) return; // 기준정보가 아직 없으면 보류
+
+  const now = nowIso();
+  const insert = db.prepare(
+    `insert into users (username, password_hash, name, role, site_id, plant_id, created_at)
+     values (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  insert.run('site1', hashPassword('1234'), '현장 담당자', 'site', site.id, null, now);
+  insert.run('plant1', hashPassword('1234'), '덕원레미콘 배차', 'plant', null, plants[0].id, now);
+  if (plants[1]) {
+    insert.run('plant2', hashPassword('1234'), '한라레미콘 배차', 'plant', null, plants[1].id, now);
+  }
+  console.log('[seed] demo users inserted (site1 / plant1 / plant2, 비밀번호 1234)');
 }

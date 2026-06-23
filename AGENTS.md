@@ -234,8 +234,8 @@ Risk:
 | Supabase PostgreSQL | 로컬 SQLite (`node:sqlite`, Node 24 내장) | DB 미연결 환경. 네이티브 모듈 없이 동작 |
 | Cloudflare Workers 배포 | `@hono/node-server` 로컬 실행 | 배포 없음. Hono 코드 구조는 표준 그대로 유지 |
 | React Router v7 SSR | Framework Mode + `ssr: false` (SPA) | 로컬 정적 서빙. 네이버 지도는 클라이언트 전용 |
-| 인증/RLS | 없음 — 시작 화면에서 역할(현장/업체) 선택 | 프로토타입 범위 |
-| GPS 단말 연동 | 서버 위치 시뮬레이터 (`delivery.simulator.ts`) | 실차량 연동 전 데모용. `SIM_MULTIPLIER` 배속 |
+| 인증/RLS | JWT 로그인 (hono/jwt + scrypt). 역할 선택 화면은 로그인으로 대체. 테넌트 격리는 service 레이어에서 강제 | RLS는 SQLite라 미적용 — Supabase 전환 시 재검토 |
+| GPS 단말 연동 | 배차별 tracking_mode: gps(기사 폰 위치 핑 + 지오펜스 자동 도착) / estimated(시뮬레이터). 기사용 공개 추적 링크(서명 토큰). ETA는 네이버 Directions 우선 → haversine 폴백 | 전용 GPS 단말/FMS 연동은 추후. `SIM_MULTIPLIER`/`GEOFENCE_M`/`NAVER_DIRECTIONS_*` 환경변수 |
 
 추가 규칙:
 

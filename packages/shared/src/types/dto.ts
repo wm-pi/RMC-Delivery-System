@@ -5,9 +5,30 @@ import type {
   OrderEventActor,
   OrderEventType,
   OrderStatus,
+  TrackingMode,
+  UserRole,
   VehicleStatus,
 } from '../constants/status';
 import type { LatLng } from '../utils/geo';
+
+/** 로그인한 사용자 — 토큰 페이로드이자 프론트 인증 컨텍스트 */
+export interface AuthUserDto {
+  id: number;
+  username: string;
+  name: string;
+  role: UserRole;
+  /** role === 'site'일 때만 채워짐 */
+  siteId: number | null;
+  /** role === 'plant'일 때만 채워짐 */
+  plantId: number | null;
+  /** 소속 현장 또는 공장 이름 (헤더 표시용) */
+  orgName: string;
+}
+
+export interface LoginResponseDto {
+  token: string;
+  user: AuthUserDto;
+}
 
 export interface PlantDto {
   id: number;
@@ -74,6 +95,9 @@ export interface DeliveryDto {
   lat: number | null;
   lng: number | null;
   progress: number;
+  trackingMode: TrackingMode;
+  /** 마지막 GPS 핑 수신 시각 (gps 모드) */
+  lastPingAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,6 +158,38 @@ export interface ActiveDeliveryDto extends DeliveryDto {
   remainingKm: number;
   etaMinutes: number;
   currentSpeedKmh: number;
+  /** ETA 산출 근거: 네이버 길찾기 / 직선거리 / 정지(이동 안 함) */
+  etaSource: 'directions' | 'straight' | 'none';
+  /** gps 모드인데 최근 핑이 끊긴 상태 */
+  stale: boolean;
+}
+
+/** 기사용 추적 페이지 부트스트랩 정보 */
+export interface DriverTrackInfoDto {
+  deliveryId: number;
+  orderNo: string;
+  truckNumber: string;
+  driverName: string;
+  plantName: string;
+  siteName: string;
+  status: DeliveryStatus;
+  trackingMode: TrackingMode;
+  /** 현재 향하는 목적지 (운송 중=현장, 복귀 중=공장, 그 외 null) */
+  destination: LatLng | null;
+  destinationName: string | null;
+}
+
+/** 기사 추적 링크 발급 응답 */
+export interface DriverLinkDto {
+  token: string;
+  path: string;
+}
+
+/** 위치 핑 처리 결과 */
+export interface LocationPingResultDto {
+  status: DeliveryStatus;
+  arrived: boolean;
+  distanceToDestM: number | null;
 }
 
 export interface ApiErrorBody {

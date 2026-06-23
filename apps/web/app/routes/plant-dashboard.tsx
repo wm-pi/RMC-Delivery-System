@@ -4,11 +4,11 @@ import { OPEN_ORDER_STATUSES } from '@rmc/shared';
 import { useOrderList } from '~/entities/order/queries';
 import { useVehicleList } from '~/entities/vehicle/queries';
 import { OrderCard } from '~/features/order-list/OrderCard';
-import { useRoleStore } from '~/shared/lib/role.store';
+import { useAuthStore } from '~/shared/lib/auth.store';
 import { EmptyState, PageHeader, Spinner, StatChip } from '~/shared/ui';
 
 export default function PlantDashboard() {
-  const { plantId } = useRoleStore();
+  const { plantId } = useAuthStore();
   const { data: orders, isLoading } = useOrderList({ plantId: plantId ?? undefined }, !!plantId);
   const { data: vehicles = [] } = useVehicleList(plantId ?? undefined);
 

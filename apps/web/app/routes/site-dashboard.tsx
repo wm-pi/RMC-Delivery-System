@@ -4,11 +4,11 @@ import { Link } from 'react-router';
 import { OPEN_ORDER_STATUSES, formatQuantity } from '@rmc/shared';
 import { useOrderList } from '~/entities/order/queries';
 import { OrderCard } from '~/features/order-list/OrderCard';
-import { useRoleStore } from '~/shared/lib/role.store';
+import { useAuthStore } from '~/shared/lib/auth.store';
 import { Button, EmptyState, PageHeader, Spinner, StatChip } from '~/shared/ui';
 
 export default function SiteDashboard() {
-  const { siteId } = useRoleStore();
+  const { siteId } = useAuthStore();
   const { data: orders, isLoading } = useOrderList({ siteId: siteId ?? undefined }, !!siteId);
 
   if (isLoading) return <Spinner />;

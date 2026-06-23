@@ -1,6 +1,7 @@
 // 공통 API client — 모든 feature/entity API 함수는 이 client만 사용한다
 
 import type { ApiErrorBody } from '@rmc/shared';
+import { useAuthStore } from '~/shared/lib/auth.store';
 
 export class ApiError extends Error {
   readonly code: string;
@@ -16,11 +17,21 @@ export class ApiError extends Error {
   }
 }
 
+/** 401 응답 시 세션을 비우고 로그인 화면으로 보낸다 */
+function handleUnauthorized(): void {
+  useAuthStore.getState().logout();
+  if (typeof globalThis !== 'undefined' && globalThis.location?.pathname !== '/') {
+    globalThis.location.href = '/';
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  });
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = useAuthStore.getState().token;
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`/api${path}`, { headers, ...init });
+  if (res.status === 401) handleUnauthorized();
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => null);
   if (!res.ok) {
