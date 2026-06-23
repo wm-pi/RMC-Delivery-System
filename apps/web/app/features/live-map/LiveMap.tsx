@@ -5,6 +5,7 @@ import type { ActiveDeliveryDto } from '@rmc/shared';
 import { DELIVERY_STATUS_LABEL, formatDistance, formatETA, formatQuantity } from '@rmc/shared';
 import { useActiveDeliveries } from '~/entities/delivery/queries';
 import { usePlants, useSites } from '~/entities/master/queries';
+import { loadNaverMaps, resetNaverMaps, setAuthFailureHandler } from '~/shared/lib/naver-maps';
 
 const C = {
   sidebar: '#0f1e36',
@@ -72,6 +73,9 @@ export function LiveMap() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadKey, setLoadKey] = useState(0);
+  const authRetries = useRef(0);
 
   const mapElRef = useRef<HTMLDivElement>(null);
   const naverMap = useRef<naver.maps.Map | null>(null);
@@ -81,12 +85,25 @@ export function LiveMap() {
   const pastLines = useRef<Record<number, naver.maps.Polyline>>({});
   const futureLines = useRef<Record<number, naver.maps.Polyline>>({});
 
-  // ── 지도 초기화 (root.tsx에서 스크립트 선로드, 전역 naver 폴링) ──
+  // ── 지도 초기화 — 이 화면에서만 SDK를 1회 로드 (전역 선로드 안 함) ──
   useEffect(() => {
-    if (!mapElRef.current || naverMap.current) return;
+    if (!mapElRef.current) return;
+    let cancelled = false;
+
+    function teardown() {
+      [plantMkrs, siteMkrs, truckMkrs].forEach((ref) => {
+        Object.values(ref.current).forEach((m) => m.setMap(null));
+        ref.current = {};
+      });
+      [pastLines, futureLines].forEach((ref) => {
+        Object.values(ref.current).forEach((l) => l.setMap(null));
+        ref.current = {};
+      });
+      naverMap.current = null;
+    }
 
     function initMap() {
-      if (naverMap.current || !mapElRef.current) return;
+      if (cancelled || naverMap.current || !mapElRef.current) return;
       naverMap.current = new naver.maps.Map(mapElRef.current, {
         center: new naver.maps.LatLng(37.352, 127.927),
         zoom: 13,
@@ -95,39 +112,39 @@ export function LiveMap() {
         scaleControl: false,
         mapDataControl: false,
       });
+      authRetries.current = 0;
       setMapReady(true);
-      // 인증 성공 — 자동 재시도 카운터 초기화 (다음 일시 오류 때 다시 재시도 가능)
-      try {
-        sessionStorage.removeItem('naverAuthRetry');
-      } catch {
-        /* sessionStorage 비활성 환경 무시 */
-      }
     }
 
-    let poll: ReturnType<typeof setInterval> | null = null;
-    if (typeof naver !== 'undefined' && naver.maps) {
-      initMap();
-    } else {
-      poll = setInterval(() => {
-        if (typeof naver !== 'undefined' && naver.maps) {
-          clearInterval(poll!);
-          poll = null;
-          initMap();
-        }
-      }, 50);
-    }
+    // 네이버 인증 일시 실패 시: 페이지 새로고침 없이 SDK만 재주입해 재시도
+    setAuthFailureHandler(() => {
+      if (cancelled) return;
+      if (authRetries.current >= 3) {
+        setLoadError(true);
+        return;
+      }
+      authRetries.current += 1;
+      teardown();
+      setMapReady(false);
+      resetNaverMaps();
+      setTimeout(() => {
+        if (!cancelled) setLoadKey((k) => k + 1);
+      }, 400 * authRetries.current);
+    });
+
+    setLoadError(false);
+    loadNaverMaps()
+      .then(initMap)
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
 
     return () => {
-      if (poll) clearInterval(poll);
-      [plantMkrs, siteMkrs, truckMkrs].forEach((ref) =>
-        Object.values(ref.current).forEach((m) => m.setMap(null)),
-      );
-      [pastLines, futureLines].forEach((ref) =>
-        Object.values(ref.current).forEach((l) => l.setMap(null)),
-      );
-      naverMap.current = null;
+      cancelled = true;
+      setAuthFailureHandler(null);
+      teardown();
     };
-  }, []);
+  }, [loadKey]);
 
   // ── 공장/현장 마커 동기화 ──
   useEffect(() => {
@@ -441,10 +458,29 @@ export function LiveMap() {
 
         {!mapReady && (
           <div
-            className="absolute inset-0 z-[400] flex items-center justify-center text-sm"
+            className="absolute inset-0 z-[400] flex flex-col items-center justify-center gap-3 text-sm"
             style={{ background: 'rgba(15,30,54,.85)', color: C.muted }}
           >
-            지도 로딩 중...
+            {loadError ? (
+              <>
+                <div style={{ color: C.text }}>지도를 불러오지 못했습니다 (네이버 지도 일시 오류)</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    authRetries.current = 0;
+                    resetNaverMaps();
+                    setLoadError(false);
+                    setLoadKey((k) => k + 1);
+                  }}
+                  className="rounded-md px-4 py-2 font-semibold"
+                  style={{ background: C.accent, color: '#000' }}
+                >
+                  다시 시도
+                </button>
+              </>
+            ) : (
+              '지도 로딩 중...'
+            )}
           </div>
         )}
       </div>
