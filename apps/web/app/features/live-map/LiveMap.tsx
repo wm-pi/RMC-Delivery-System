@@ -312,29 +312,34 @@ export function LiveMap() {
         }
         const toLLs = (pts: LatLng[]) => pts.map((p) => new naver.maps.LatLng(p.lat, p.lng));
 
+        const pastWeight = isSel ? 6 : 4;
+        const pastOpacity = isSel ? 1 : 0.85;
+        const futureWeight = isSel ? 5 : 4;
+        const futureOpacity = isSel ? 0.6 : 0.45;
         if (pastLines.current[d.id]) {
           pastLines.current[d.id].setOptions({
             path: toLLs(passed),
             strokeColor: color,
-            strokeWeight: isSel ? 4 : 2,
-            strokeOpacity: isSel ? 1 : 0.6,
+            strokeWeight: pastWeight,
+            strokeOpacity: pastOpacity,
           });
         } else {
           pastLines.current[d.id] = new naver.maps.Polyline({
             path: toLLs(passed), map, strokeColor: color,
-            strokeWeight: isSel ? 4 : 2, strokeOpacity: isSel ? 1 : 0.6, strokeStyle: 'solid',
+            strokeWeight: pastWeight, strokeOpacity: pastOpacity, strokeStyle: 'solid', strokeLineCap: 'round', strokeLineJoin: 'round',
           });
         }
         if (futureLines.current[d.id]) {
           futureLines.current[d.id].setOptions({
             path: toLLs(remaining),
             strokeColor: color,
-            strokeOpacity: isSel ? 0.5 : 0.2,
+            strokeWeight: futureWeight,
+            strokeOpacity: futureOpacity,
           });
         } else {
           futureLines.current[d.id] = new naver.maps.Polyline({
             path: toLLs(remaining), map, strokeColor: color,
-            strokeWeight: 2, strokeOpacity: isSel ? 0.5 : 0.2, strokeStyle: 'shortdash',
+            strokeWeight: futureWeight, strokeOpacity: futureOpacity, strokeStyle: 'shortdash', strokeLineCap: 'round', strokeLineJoin: 'round',
           });
         }
       } else {
