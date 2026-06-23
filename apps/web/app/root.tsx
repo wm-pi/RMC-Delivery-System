@@ -22,6 +22,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <title>레미콘 운송 관리</title>
         <Meta />
         <Links />
+        {/* 네이버 지도 인증 서버가 간헐적 500("잠시 후 다시 요청")을 내면 지도가 안 뜬다.
+            maps.js 로드 전에 실패 콜백을 등록해 자동 재시도(최대 2회)한다. */}
+        <script
+          // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
+          dangerouslySetInnerHTML={{
+            __html: `window.navermap_authFailure=function(){try{var k='naverAuthRetry',n=parseInt(sessionStorage.getItem(k)||'0',10);if(n<2){sessionStorage.setItem(k,String(n+1));location.reload();}}catch(e){}};`,
+          }}
+        />
         {NAVER_SCRIPT_SRC && <script src={NAVER_SCRIPT_SRC} />}
       </head>
       <body className="bg-slate-100 text-slate-900">

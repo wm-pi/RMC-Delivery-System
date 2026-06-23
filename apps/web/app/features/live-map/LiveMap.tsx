@@ -96,6 +96,12 @@ export function LiveMap() {
         mapDataControl: false,
       });
       setMapReady(true);
+      // 인증 성공 — 자동 재시도 카운터 초기화 (다음 일시 오류 때 다시 재시도 가능)
+      try {
+        sessionStorage.removeItem('naverAuthRetry');
+      } catch {
+        /* sessionStorage 비활성 환경 무시 */
+      }
     }
 
     let poll: ReturnType<typeof setInterval> | null = null;
