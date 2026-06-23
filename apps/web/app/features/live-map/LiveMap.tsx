@@ -295,6 +295,22 @@ export function LiveMap() {
                     <span className="text-[13px] font-bold" style={{ color: C.text }}>
                       {d.truckNumber}
                     </span>
+                    <span
+                      className="rounded px-1 py-0.5 text-[9px] font-bold"
+                      style={
+                        d.trackingMode === 'gps'
+                          ? { color: '#34d399', border: '1px solid rgba(52,211,153,.4)' }
+                          : { color: C.muted, border: `1px solid ${C.border}` }
+                      }
+                      title={d.trackingMode === 'gps' ? '기사 폰 실측' : '지도거리 추정'}
+                    >
+                      {d.trackingMode === 'gps' ? '실측' : '추정'}
+                    </span>
+                    {d.stale && (
+                      <span className="text-[9px] font-bold text-amber-400" title="GPS 신호 끊김">
+                        위치 끊김
+                      </span>
+                    )}
                   </div>
                   <span
                     className="rounded-full border px-1.5 py-0.5 text-[10px] font-semibold"

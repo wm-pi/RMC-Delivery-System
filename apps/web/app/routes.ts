@@ -1,7 +1,10 @@
 import { type RouteConfig, index, layout, prefix, route } from '@react-router/dev/routes';
 
 export default [
-  index('routes/role-select.tsx'),
+  index('routes/login.tsx'),
+
+  // 기사용 추적 페이지 (공개, 서명 링크로 진입 — 레이아웃/로그인 불필요)
+  route('track/:deliveryId', 'routes/track.tsx'),
 
   // 현장(건설사) 화면
   ...prefix('site', [

@@ -1,7 +1,7 @@
 // 업체 화면의 배차 패널 — 가용 차량을 골라 회전을 추가한다
 
 import { useMemo, useState } from 'react';
-import type { OrderDto, OrderStatsDto } from '@rmc/shared';
+import type { OrderDto, OrderStatsDto, TrackingMode } from '@rmc/shared';
 import { formatQuantity } from '@rmc/shared';
 import { deliveryApi } from '~/entities/delivery/api';
 import { useDeliveryAction } from '~/entities/delivery/queries';
@@ -15,6 +15,7 @@ export function DispatchPanel({ order, stats }: { order: OrderDto; stats: OrderS
   const available = useMemo(() => vehicles.filter((v) => v.status === 'available'), [vehicles]);
   const [vehicleId, setVehicleId] = useState<number | ''>('');
   const [quantity, setQuantity] = useState('');
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>('estimated');
 
   const selected = available.find((v) => v.id === vehicleId);
   const defaultQty = selected
@@ -28,7 +29,7 @@ export function DispatchPanel({ order, stats }: { order: OrderDto; stats: OrderS
 
   function handleAssign() {
     if (vehicleId === '') return;
-    assign.mutate([order.id, { vehicleId: Number(vehicleId), quantityM3: qty }], {
+    assign.mutate([order.id, { vehicleId: Number(vehicleId), quantityM3: qty, trackingMode }], {
       onSuccess: () => {
         setVehicleId('');
         setQuantity('');
@@ -85,6 +86,17 @@ export function DispatchPanel({ order, stats }: { order: OrderDto; stats: OrderS
           value={quantity === '' ? defaultQty : quantity}
           onChange={(e) => setQuantity(e.target.value)}
         />
+      </div>
+      <div className="w-36">
+        <label className="mb-1 block text-xs font-semibold text-slate-600">위치 추적</label>
+        <select
+          className={inputCls}
+          value={trackingMode}
+          onChange={(e) => setTrackingMode(e.target.value as TrackingMode)}
+        >
+          <option value="estimated">추정 (지도거리)</option>
+          <option value="gps">실측 (기사 폰)</option>
+        </select>
       </div>
       <Button onClick={handleAssign} disabled={!canAssign}>
         배차 추가

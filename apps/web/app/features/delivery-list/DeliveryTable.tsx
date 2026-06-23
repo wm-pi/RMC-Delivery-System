@@ -1,11 +1,40 @@
 // 주문 상세의 회전(배차) 목록 — 역할에 따라 가능한 액션 버튼이 달라진다
 
+import { useState } from 'react';
 import type { DeliveryDto, UserRole } from '@rmc/shared';
-import { formatProgress, formatQuantity, formatTime } from '@rmc/shared';
+import { TRACKING_MODE_LABEL, formatProgress, formatQuantity, formatTime } from '@rmc/shared';
 import { deliveryApi } from '~/entities/delivery/api';
 import { useDeliveryAction } from '~/entities/delivery/queries';
 import { DeliveryStatusBadge } from '~/entities/delivery/status';
+import { ApiError } from '~/shared/api/client';
 import { Button, EmptyState } from '~/shared/ui';
+
+/** gps 모드 배차의 기사 추적 링크를 발급해 클립보드에 복사 (업체용) */
+function TrackLinkButton({ deliveryId }: { deliveryId: number }) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function copy() {
+    setBusy(true);
+    try {
+      const { path } = await deliveryApi.trackLink(deliveryId);
+      const url = `${globalThis.location.origin}${path}`;
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : '링크 발급에 실패했습니다');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Button size="sm" variant="secondary" onClick={copy} disabled={busy}>
+      {copied ? '복사됨 ✓' : '기사 링크'}
+    </Button>
+  );
+}
 
 function DeliveryActions({ delivery, role }: { delivery: DeliveryDto; role: UserRole }) {
   const load = useDeliveryAction(deliveryApi.load);
@@ -75,6 +104,7 @@ export function DeliveryTable({ deliveries, role }: { deliveries: DeliveryDto[];
             <th className="px-2 py-2">회전</th>
             <th className="px-2 py-2">차량 / 기사</th>
             <th className="px-2 py-2">수량</th>
+            <th className="px-2 py-2">추적</th>
             <th className="px-2 py-2">상태</th>
             <th className="px-2 py-2">출발</th>
             <th className="px-2 py-2">도착</th>
@@ -91,6 +121,18 @@ export function DeliveryTable({ deliveries, role }: { deliveries: DeliveryDto[];
                 <div className="text-xs text-slate-500">{d.driverName}</div>
               </td>
               <td className="px-2 py-2.5">{formatQuantity(d.quantityM3)}</td>
+              <td className="px-2 py-2.5">
+                <div className="flex flex-col items-start gap-1">
+                  <span className={`text-xs font-semibold ${d.trackingMode === 'gps' ? 'text-emerald-600' : 'text-slate-500'}`}>
+                    {TRACKING_MODE_LABEL[d.trackingMode]}
+                  </span>
+                  {role === 'plant' &&
+                    d.trackingMode === 'gps' &&
+                    !['returned', 'cancelled'].includes(d.status) && (
+                      <TrackLinkButton deliveryId={d.id} />
+                    )}
+                </div>
+              </td>
               <td className="px-2 py-2.5">
                 <DeliveryStatusBadge status={d.status} />
                 {(d.status === 'in_transit' || d.status === 'returning') && (

@@ -99,6 +99,16 @@ export const ORDER_EVENT_ACTOR_LABEL: Record<OrderEventActor, string> = {
   system: '시스템',
 };
 
+/** 배차 위치 추적 모드 */
+export const TRACKING_MODES = ['gps', 'estimated'] as const;
+
+export type TrackingMode = (typeof TRACKING_MODES)[number];
+
+export const TRACKING_MODE_LABEL: Record<TrackingMode, string> = {
+  gps: '실측(GPS)',
+  estimated: '추정',
+};
+
 export const ORDER_EVENT_TYPES = ['message', 'status', 'adjust', 'dispatch'] as const;
 
 export type OrderEventType = (typeof ORDER_EVENT_TYPES)[number];

@@ -250,7 +250,9 @@ Purpose: 주문의 배차 회전. 차량 1대 1회 운송 + 실시간 위치
 Columns: id PK, order_id FK→orders, vehicle_id FK→vehicles, seq, quantity_m3 CHECK(>0),
          status CHECK(assigned|loading|in_transit|arrived|pouring|returning|returned|cancelled),
          dispatched_at, arrived_at, pouring_started_at, pouring_ended_at, returned_at,
-         lat, lng, progress, created_at, updated_at
+         lat, lng, progress,
+         tracking_mode CHECK(gps|estimated, default estimated), last_ping_at,
+         created_at, updated_at
 Unique constraints: (order_id, seq)
 Indexes: idx_deliveries_order_id (주문 상세/집계 조회), idx_deliveries_status (활성 배차/시뮬레이터 폴링)
 Related APIs: /api/deliveries*, /api/orders/:id/deliveries
@@ -261,6 +263,14 @@ Columns: id PK, order_id FK→orders, actor CHECK(site|plant|system),
          type CHECK(message|status|adjust|dispatch), message, created_at
 Indexes: idx_order_events_order_id
 Related APIs: /api/orders/:id (events 포함), /api/orders/:id/messages
+
+Table: users
+Purpose: 로그인 계정 + 테넌트 소속 (현장 또는 공장)
+Columns: id PK, username UNIQUE, password_hash(scrypt "salt:hash"), name,
+         role CHECK(site|plant), site_id FK→sites, plant_id FK→plants, created_at
+Check: role=site → site_id NOT NULL & plant_id NULL / role=plant → 반대
+Related APIs: /api/auth/login, /api/auth/me
+Notes: 비밀번호는 node:crypto scrypt 해시. 권한 판단은 JWT 페이로드(role/siteId/plantId) 기준
 ```
 
 상태값/전이 규칙의 단일 소스는 `packages/shared/src/constants/status.ts`다.

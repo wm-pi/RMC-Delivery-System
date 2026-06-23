@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
-import { useRoleStore } from '~/shared/lib/role.store';
+import { useAuthStore } from '~/shared/lib/auth.store';
 
 const NAV_ITEMS = [
   { to: '/site', label: '주문 현황', end: true },
@@ -10,7 +10,7 @@ const NAV_ITEMS = [
 
 export default function SiteLayout() {
   const navigate = useNavigate();
-  const { role, siteId, siteName, reset } = useRoleStore();
+  const { role, siteId, siteName, logout } = useAuthStore();
 
   useEffect(() => {
     if (role !== 'site' || !siteId) navigate('/', { replace: true });
@@ -45,11 +45,11 @@ export default function SiteLayout() {
             type="button"
             className="ml-2 rounded-md border border-white/30 px-2.5 py-1 text-xs text-white/70 hover:text-white"
             onClick={() => {
-              reset();
+              logout();
               navigate('/');
             }}
           >
-            역할 전환
+            로그아웃
           </button>
         </nav>
       </header>

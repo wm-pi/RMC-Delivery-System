@@ -67,6 +67,9 @@ create table if not exists deliveries (
   lat real,
   lng real,
   progress real not null default 0,
+  tracking_mode text not null default 'estimated'
+    check (tracking_mode in ('gps','estimated')),
+  last_ping_at text,
   created_at text not null,
   updated_at text not null,
   unique (order_id, seq)
@@ -85,8 +88,35 @@ create table if not exists order_events (
 );
 
 create index if not exists idx_order_events_order_id on order_events(order_id);
+
+create table if not exists users (
+  id integer primary key autoincrement,
+  username text not null unique,
+  password_hash text not null,
+  name text not null,
+  role text not null check (role in ('site','plant')),
+  site_id integer references sites(id),
+  plant_id integer references plants(id),
+  created_at text not null,
+  check (
+    (role = 'site' and site_id is not null and plant_id is null)
+    or (role = 'plant' and plant_id is not null and site_id is null)
+  )
+);
 `;
+
+/** 기존 DB에 누락된 컬럼을 idempotent하게 추가 (SQLite는 ADD COLUMN IF NOT EXISTS 미지원) */
+function ensureColumn(table: string, column: string, ddl: string): void {
+  const db = getDb();
+  const cols = db.prepare(`pragma table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`alter table ${table} add column ${ddl}`);
+  }
+}
 
 export function migrate(): void {
   getDb().exec(SCHEMA);
+  // 기존 DB 보강 (CREATE TABLE IF NOT EXISTS는 컬럼을 추가하지 않으므로)
+  ensureColumn('deliveries', 'tracking_mode', "tracking_mode text not null default 'estimated'");
+  ensureColumn('deliveries', 'last_ping_at', 'last_ping_at text');
 }

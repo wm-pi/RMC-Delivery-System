@@ -9,7 +9,7 @@ import { concreteGradeSchema } from '@rmc/shared';
 import { orderApi } from '~/entities/order/api';
 import { usePlants } from '~/entities/master/queries';
 import { ApiError } from '~/shared/api/client';
-import { useRoleStore } from '~/shared/lib/role.store';
+import { useAuthStore } from '~/shared/lib/auth.store';
 import { Button, Card, ErrorState, Field, inputCls } from '~/shared/ui';
 
 const formSchema = z.object({
@@ -37,7 +37,7 @@ const COMMON_GRADES = ['25-24-150', '25-21-120', '30-24-150', '30-21-120', '24-2
 export function OrderCreateForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { siteId } = useRoleStore();
+  const { siteId } = useAuthStore();
   const { data: plants = [] } = usePlants();
 
   const {

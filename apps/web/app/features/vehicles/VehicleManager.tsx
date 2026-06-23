@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { VEHICLE_STATUS_LABEL, formatQuantity } from '@rmc/shared';
 import { vehicleApi } from '~/entities/vehicle/api';
 import { useVehicleAction, useVehicleList } from '~/entities/vehicle/queries';
-import { useRoleStore } from '~/shared/lib/role.store';
+import { useAuthStore } from '~/shared/lib/auth.store';
 import { Badge, Button, Card, EmptyState, Field, inputCls, Modal, Spinner } from '~/shared/ui';
 
 const STATUS_COLOR = {
@@ -65,7 +65,7 @@ function AddVehicleModal({ plantId, onClose }: { plantId: number; onClose: () =>
 }
 
 export function VehicleManager() {
-  const { plantId } = useRoleStore();
+  const { plantId } = useAuthStore();
   const { data: vehicles, isLoading } = useVehicleList(plantId ?? undefined);
   const update = useVehicleAction(vehicleApi.update);
   const remove = useVehicleAction(vehicleApi.remove);

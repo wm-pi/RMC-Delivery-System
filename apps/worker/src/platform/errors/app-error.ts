@@ -1,5 +1,7 @@
 export const ErrorCode = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  FORBIDDEN: 'FORBIDDEN',
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
   INVALID_STATE: 'INVALID_STATE',
@@ -20,6 +22,14 @@ export class AppError extends Error {
     this.code = code;
     this.status = status;
     this.detail = detail;
+  }
+
+  static unauthorized(message = '로그인이 필요합니다'): AppError {
+    return new AppError(ErrorCode.UNAUTHORIZED, message, 401);
+  }
+
+  static forbidden(message = '접근 권한이 없습니다'): AppError {
+    return new AppError(ErrorCode.FORBIDDEN, message, 403);
   }
 
   static notFound(message = '대상을 찾을 수 없습니다'): AppError {
