@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '~/shared/api/client';
+import { toast } from '~/shared/lib/toast.store';
 import { orderApi, type OrderListFilter } from './api';
 
 export const orderKeys = {
@@ -26,16 +27,20 @@ export function useOrderDetail(id: number) {
   });
 }
 
-/** 주문 단위 액션 공통 mutation — 성공 시 주문 캐시 무효화, 실패 시 서버 메시지 alert */
+/** 주문 단위 액션 공통 mutation — 성공 시 주문 캐시 무효화, 실패 시 토스트. successMessage가 있으면 성공 토스트 */
 export function useOrderAction<TArgs extends unknown[]>(
   fn: (...args: TArgs) => Promise<unknown>,
+  successMessage?: string,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: TArgs) => fn(...args),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: orderKeys.all }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: orderKeys.all });
+      if (successMessage) toast.success(successMessage);
+    },
     onError: (err) => {
-      alert(err instanceof ApiError ? err.message : '요청에 실패했습니다');
+      toast.error(err instanceof ApiError ? err.message : '요청에 실패했습니다');
     },
   });
 }

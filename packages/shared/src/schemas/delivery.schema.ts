@@ -13,6 +13,13 @@ export const assignDeliverySchema = z.object({
 
 export type AssignDeliveryInput = z.infer<typeof assignDeliverySchema>;
 
+/** 잔여 수량을 가용 차량으로 한 번에 채우는 일괄 배차 — 추적 방식만 받는다 */
+export const autoAssignSchema = z.object({
+  trackingMode: z.enum(['gps', 'estimated']).default('estimated'),
+});
+
+export type AutoAssignInput = z.infer<typeof autoAssignSchema>;
+
 /** 기사 폰이 전송하는 위치 좌표 */
 export const locationPingSchema = z.object({
   lat: z.number().min(-90).max(90),

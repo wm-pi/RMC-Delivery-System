@@ -18,7 +18,7 @@ function AddVehicleModal({ plantId, onClose }: { plantId: number; onClose: () =>
   const [driverName, setDriverName] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
   const [capacity, setCapacity] = useState('6');
-  const create = useVehicleAction(vehicleApi.create);
+  const create = useVehicleAction(vehicleApi.create, '차량을 등록했습니다');
 
   const valid = truckNumber.trim() && driverName.trim() && Number(capacity) > 0;
 
@@ -53,10 +53,10 @@ function AddVehicleModal({ plantId, onClose }: { plantId: number; onClose: () =>
         <input type="number" step="0.5" className={inputCls} value={capacity} onChange={(e) => setCapacity(e.target.value)} />
       </Field>
       <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>
+        <Button variant="secondary" onClick={onClose} disabled={create.isPending}>
           닫기
         </Button>
-        <Button onClick={submit} disabled={!valid || create.isPending}>
+        <Button onClick={submit} disabled={!valid} loading={create.isPending}>
           등록
         </Button>
       </div>
@@ -67,8 +67,8 @@ function AddVehicleModal({ plantId, onClose }: { plantId: number; onClose: () =>
 export function VehicleManager() {
   const { plantId } = useAuthStore();
   const { data: vehicles, isLoading } = useVehicleList(plantId ?? undefined);
-  const update = useVehicleAction(vehicleApi.update);
-  const remove = useVehicleAction(vehicleApi.remove);
+  const update = useVehicleAction(vehicleApi.update, '차량 상태를 변경했습니다');
+  const remove = useVehicleAction(vehicleApi.remove, '차량을 삭제했습니다');
   const [showAdd, setShowAdd] = useState(false);
 
   if (isLoading) return <Spinner />;
@@ -123,9 +123,8 @@ export function VehicleManager() {
                         <Button
                           size="sm"
                           variant="danger"
-                          onClick={() => {
-                            if (confirm(`${v.truckNumber} 차량을 삭제할까요?`)) remove.mutate([v.id]);
-                          }}
+                          onClick={() => remove.mutate([v.id])}
+                          loading={remove.isPending}
                         >
                           삭제
                         </Button>

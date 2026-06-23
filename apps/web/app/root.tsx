@@ -1,17 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { isRouteErrorResponse, Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError } from 'react-router';
+import { Toaster } from '~/shared/ui';
 import './app.css';
 
-// 신형 키(ncpKeyId, 2025년 이후 NCP Maps)가 있으면 우선 사용, 없으면 구형(ncpClientId)
-const NAVER_KEY_ID = import.meta.env.VITE_NAVER_MAPS_KEY_ID as string | undefined;
-const NAVER_CLIENT_ID = import.meta.env.VITE_NAVER_MAPS_CLIENT_ID as string | undefined;
-
-const NAVER_SCRIPT_SRC = NAVER_KEY_ID
-  ? `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${NAVER_KEY_ID}`
-  : NAVER_CLIENT_ID
-    ? `https://openapi.map.naver.com/openapi/v3/maps.js?ncpClientId=${NAVER_CLIENT_ID}`
-    : null;
+// 네이버 지도 SDK는 전역에서 선로드하지 않는다. 지도 화면(LiveMap)이 마운트될 때만
+// 1회 로드한다 — 지도 없는 페이지에서의 불필요한 인증/중복 인증을 없애기 위함.
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -22,10 +16,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <title>레미콘 운송 관리</title>
         <Meta />
         <Links />
-        {NAVER_SCRIPT_SRC && <script src={NAVER_SCRIPT_SRC} />}
       </head>
       <body className="bg-slate-100 text-slate-900">
         {children}
+        <Toaster />
         <ScrollRestoration />
         <Scripts />
       </body>

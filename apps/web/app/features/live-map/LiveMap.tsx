@@ -1,10 +1,51 @@
 // 실시간 운송 지도 — 서버(시뮬레이터)가 갱신하는 배차 위치를 네이버 지도에 표시한다
 
 import { useEffect, useRef, useState } from 'react';
-import type { ActiveDeliveryDto } from '@rmc/shared';
-import { DELIVERY_STATUS_LABEL, formatDistance, formatETA, formatQuantity } from '@rmc/shared';
+import type { ActiveDeliveryDto, LatLng } from '@rmc/shared';
+import {
+  DELIVERY_STATUS_LABEL,
+  formatDistance,
+  formatETA,
+  formatQuantity,
+  haversineDistance,
+} from '@rmc/shared';
+import { deliveryApi } from '~/entities/delivery/api';
 import { useActiveDeliveries } from '~/entities/delivery/queries';
 import { usePlants, useSites } from '~/entities/master/queries';
+import { loadNaverMaps, resetNaverMaps, setAuthFailureHandler } from '~/shared/lib/naver-maps';
+
+/** 누적 거리 기준으로 도로 경로에서 progress(0~1) 지점과 지나온/남은 구간을 나눈다 */
+function splitPathAtProgress(
+  path: LatLng[],
+  progress: number,
+): { point: LatLng; passed: LatLng[]; remaining: LatLng[] } {
+  if (path.length < 2) {
+    const only = path[0] ?? { lat: 0, lng: 0 };
+    return { point: only, passed: [only], remaining: [only] };
+  }
+  const segLens: number[] = [];
+  let total = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const len = haversineDistance(path[i], path[i + 1]);
+    segLens.push(len);
+    total += len;
+  }
+  const target = total * Math.max(0, Math.min(1, progress));
+  let acc = 0;
+  for (let i = 0; i < segLens.length; i++) {
+    if (acc + segLens[i] >= target) {
+      const t = segLens[i] > 0 ? (target - acc) / segLens[i] : 0;
+      const point: LatLng = {
+        lat: path[i].lat + (path[i + 1].lat - path[i].lat) * t,
+        lng: path[i].lng + (path[i + 1].lng - path[i].lng) * t,
+      };
+      return { point, passed: [...path.slice(0, i + 1), point], remaining: [point, ...path.slice(i + 1)] };
+    }
+    acc += segLens[i];
+  }
+  const last = path[path.length - 1];
+  return { point: last, passed: path, remaining: [last] };
+}
 
 const C = {
   sidebar: '#0f1e36',
@@ -72,6 +113,9 @@ export function LiveMap() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadKey, setLoadKey] = useState(0);
+  const authRetries = useRef(0);
 
   const mapElRef = useRef<HTMLDivElement>(null);
   const naverMap = useRef<naver.maps.Map | null>(null);
@@ -81,12 +125,30 @@ export function LiveMap() {
   const pastLines = useRef<Record<number, naver.maps.Polyline>>({});
   const futureLines = useRef<Record<number, naver.maps.Polyline>>({});
 
-  // ── 지도 초기화 (root.tsx에서 스크립트 선로드, 전역 naver 폴링) ──
+  // 배차별 현재 운행 구간 도로 경로 (주문+방향 단위로 1회 fetch 후 재사용)
+  const pathsRef = useRef<Record<string, LatLng[]>>({});
+  const fetchingRef = useRef<Set<string>>(new Set());
+  const [pathVer, setPathVer] = useState(0);
+
+  // ── 지도 초기화 — 이 화면에서만 SDK를 1회 로드 (전역 선로드 안 함) ──
   useEffect(() => {
-    if (!mapElRef.current || naverMap.current) return;
+    if (!mapElRef.current) return;
+    let cancelled = false;
+
+    function teardown() {
+      [plantMkrs, siteMkrs, truckMkrs].forEach((ref) => {
+        Object.values(ref.current).forEach((m) => m.setMap(null));
+        ref.current = {};
+      });
+      [pastLines, futureLines].forEach((ref) => {
+        Object.values(ref.current).forEach((l) => l.setMap(null));
+        ref.current = {};
+      });
+      naverMap.current = null;
+    }
 
     function initMap() {
-      if (naverMap.current || !mapElRef.current) return;
+      if (cancelled || naverMap.current || !mapElRef.current) return;
       naverMap.current = new naver.maps.Map(mapElRef.current, {
         center: new naver.maps.LatLng(37.352, 127.927),
         zoom: 13,
@@ -95,33 +157,39 @@ export function LiveMap() {
         scaleControl: false,
         mapDataControl: false,
       });
+      authRetries.current = 0;
       setMapReady(true);
     }
 
-    let poll: ReturnType<typeof setInterval> | null = null;
-    if (typeof naver !== 'undefined' && naver.maps) {
-      initMap();
-    } else {
-      poll = setInterval(() => {
-        if (typeof naver !== 'undefined' && naver.maps) {
-          clearInterval(poll!);
-          poll = null;
-          initMap();
-        }
-      }, 50);
-    }
+    // 네이버 인증 일시 실패 시: 페이지 새로고침 없이 SDK만 재주입해 재시도
+    setAuthFailureHandler(() => {
+      if (cancelled) return;
+      if (authRetries.current >= 3) {
+        setLoadError(true);
+        return;
+      }
+      authRetries.current += 1;
+      teardown();
+      setMapReady(false);
+      resetNaverMaps();
+      setTimeout(() => {
+        if (!cancelled) setLoadKey((k) => k + 1);
+      }, 400 * authRetries.current);
+    });
+
+    setLoadError(false);
+    loadNaverMaps()
+      .then(initMap)
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      });
 
     return () => {
-      if (poll) clearInterval(poll);
-      [plantMkrs, siteMkrs, truckMkrs].forEach((ref) =>
-        Object.values(ref.current).forEach((m) => m.setMap(null)),
-      );
-      [pastLines, futureLines].forEach((ref) =>
-        Object.values(ref.current).forEach((l) => l.setMap(null)),
-      );
-      naverMap.current = null;
+      cancelled = true;
+      setAuthFailureHandler(null);
+      teardown();
     };
-  }, []);
+  }, [loadKey]);
 
   // ── 공장/현장 마커 동기화 ──
   useEffect(() => {
@@ -148,6 +216,28 @@ export function LiveMap() {
     });
   }, [mapReady, plants, sites]);
 
+  // ── 운행 중 배차의 도로 경로 fetch (구간당 1회) ──
+  useEffect(() => {
+    deliveries.forEach((d) => {
+      if (!MOVING_STATUSES.has(d.status)) return;
+      const k = `${d.id}:${d.status === 'returning' ? 'r' : 'f'}`;
+      if (pathsRef.current[k] || fetchingRef.current.has(k)) return;
+      fetchingRef.current.add(k);
+      deliveryApi
+        .route(d.id)
+        .then((r) => {
+          if (r.path?.length >= 2) {
+            pathsRef.current[k] = r.path;
+            setPathVer((v) => v + 1);
+          }
+        })
+        .catch(() => {
+          /* 경로 조회 실패 시 직선 폴백 유지 */
+        })
+        .finally(() => fetchingRef.current.delete(k));
+    });
+  }, [deliveries]);
+
   // ── 차량 마커 + 경로선 동기화 ──
   useEffect(() => {
     if (!mapReady || !naverMap.current) return;
@@ -170,8 +260,17 @@ export function LiveMap() {
     visible.forEach((d, i) => {
       const color = colorOf(d, i);
       const isSel = selectedId === d.id;
-      const cur = new naver.maps.LatLng(d.lat!, d.lng!);
       const statusLabel = DELIVERY_STATUS_LABEL[d.status];
+
+      const legKey = `${d.id}:${d.status === 'returning' ? 'r' : 'f'}`;
+      const roadPath = MOVING_STATUSES.has(d.status) ? pathsRef.current[legKey] : undefined;
+
+      // 마커 위치: gps=실제 좌표, estimated=도로 경로 위 progress 지점(없으면 서버 좌표)
+      let curPos: LatLng = { lat: d.lat!, lng: d.lng! };
+      if (d.trackingMode === 'estimated' && roadPath) {
+        curPos = splitPathAtProgress(roadPath, d.progress).point;
+      }
+      const cur = new naver.maps.LatLng(curPos.lat, curPos.lng);
 
       if (truckMkrs.current[d.id]) {
         truckMkrs.current[d.id].setPosition(cur);
@@ -198,34 +297,49 @@ export function LiveMap() {
 
       // 이동 중인 차량만 경로선 표시
       if (MOVING_STATUSES.has(d.status)) {
-        const [from, to] =
-          d.status === 'returning' ? [d.destination, d.origin] : [d.origin, d.destination];
-        const fromLL = new naver.maps.LatLng(from.lat, from.lng);
-        const toLL = new naver.maps.LatLng(to.lat, to.lng);
+        // 도로 경로가 있으면 progress로 분할, 없으면 직선(from→cur→to) 폴백
+        let passed: LatLng[];
+        let remaining: LatLng[];
+        if (roadPath) {
+          const split = splitPathAtProgress(roadPath, d.progress);
+          passed = split.passed;
+          remaining = split.remaining;
+        } else {
+          const [from, to] =
+            d.status === 'returning' ? [d.destination, d.origin] : [d.origin, d.destination];
+          passed = [from, curPos];
+          remaining = [curPos, to];
+        }
+        const toLLs = (pts: LatLng[]) => pts.map((p) => new naver.maps.LatLng(p.lat, p.lng));
 
+        const pastWeight = isSel ? 6 : 4;
+        const pastOpacity = isSel ? 1 : 0.85;
+        const futureWeight = isSel ? 5 : 4;
+        const futureOpacity = isSel ? 0.6 : 0.45;
         if (pastLines.current[d.id]) {
           pastLines.current[d.id].setOptions({
-            path: [fromLL, cur],
+            path: toLLs(passed),
             strokeColor: color,
-            strokeWeight: isSel ? 4 : 2,
-            strokeOpacity: isSel ? 1 : 0.6,
+            strokeWeight: pastWeight,
+            strokeOpacity: pastOpacity,
           });
         } else {
           pastLines.current[d.id] = new naver.maps.Polyline({
-            path: [fromLL, cur], map, strokeColor: color,
-            strokeWeight: isSel ? 4 : 2, strokeOpacity: isSel ? 1 : 0.6, strokeStyle: 'solid',
+            path: toLLs(passed), map, strokeColor: color,
+            strokeWeight: pastWeight, strokeOpacity: pastOpacity, strokeStyle: 'solid', strokeLineCap: 'round', strokeLineJoin: 'round',
           });
         }
         if (futureLines.current[d.id]) {
           futureLines.current[d.id].setOptions({
-            path: [cur, toLL],
+            path: toLLs(remaining),
             strokeColor: color,
-            strokeOpacity: isSel ? 0.5 : 0.2,
+            strokeWeight: futureWeight,
+            strokeOpacity: futureOpacity,
           });
         } else {
           futureLines.current[d.id] = new naver.maps.Polyline({
-            path: [cur, toLL], map, strokeColor: color,
-            strokeWeight: 2, strokeOpacity: isSel ? 0.5 : 0.2, strokeStyle: 'shortdash',
+            path: toLLs(remaining), map, strokeColor: color,
+            strokeWeight: futureWeight, strokeOpacity: futureOpacity, strokeStyle: 'shortdash', strokeLineCap: 'round', strokeLineJoin: 'round',
           });
         }
       } else {
@@ -237,7 +351,7 @@ export function LiveMap() {
         }
       }
     });
-  }, [mapReady, deliveries, selectedId]);
+  }, [mapReady, deliveries, selectedId, pathVer]);
 
   const selected = deliveries.find((d) => d.id === selectedId) ?? null;
   const selectedColor = selected
@@ -435,10 +549,29 @@ export function LiveMap() {
 
         {!mapReady && (
           <div
-            className="absolute inset-0 z-[400] flex items-center justify-center text-sm"
+            className="absolute inset-0 z-[400] flex flex-col items-center justify-center gap-3 text-sm"
             style={{ background: 'rgba(15,30,54,.85)', color: C.muted }}
           >
-            지도 로딩 중...
+            {loadError ? (
+              <>
+                <div style={{ color: C.text }}>지도를 불러오지 못했습니다 (네이버 지도 일시 오류)</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    authRetries.current = 0;
+                    resetNaverMaps();
+                    setLoadError(false);
+                    setLoadKey((k) => k + 1);
+                  }}
+                  className="rounded-md px-4 py-2 font-semibold"
+                  style={{ background: C.accent, color: '#000' }}
+                >
+                  다시 시도
+                </button>
+              </>
+            ) : (
+              '지도 로딩 중...'
+            )}
           </div>
         )}
       </div>

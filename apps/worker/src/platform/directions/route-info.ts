@@ -13,7 +13,14 @@ export interface RouteInfo {
   source: EtaSource;
 }
 
-const cache = new Map<string, { km: number; durationMin: number }>();
+interface CachedRoute {
+  km: number;
+  durationMin: number;
+  /** 실제 도로 경로 좌표 (Directions 제공). 폴백 시 [from, to] 직선 */
+  path: LatLng[];
+}
+
+const cache = new Map<string, CachedRoute>();
 const inflight = new Set<string>();
 
 function key(from: LatLng, to: LatLng): string {
@@ -49,10 +56,33 @@ async function warmCache(k: string, from: LatLng, to: LatLng): Promise<void> {
   }
 }
 
+/** 도로 경로 좌표 반환 — 캐시 우선, 없으면 Directions 호출(await), 미설정/실패 시 직선 2점 폴백 */
+export async function getRoutePath(
+  from: LatLng,
+  to: LatLng,
+): Promise<{ path: LatLng[]; source: EtaSource }> {
+  const k = key(from, to);
+  const cached = cache.get(k);
+  if (cached) return { path: cached.path, source: 'directions' };
+
+  if (directionsEnabled()) {
+    try {
+      const r = await fetchDirections(from, to);
+      if (r) {
+        cache.set(k, r);
+        return { path: r.path, source: 'directions' };
+      }
+    } catch (err) {
+      console.warn('[directions] 경로 조회 실패, 직선으로 폴백:', (err as Error).message);
+    }
+  }
+  return { path: [from, to], source: 'straight' };
+}
+
 // 신형 NCP Maps Directions 15 — maps.apigw.ntruss.com + 소문자 ncp 헤더
 const DIRECTIONS_URL = 'https://maps.apigw.ntruss.com/map-direction-15/v1/driving';
 
-async function fetchDirections(from: LatLng, to: LatLng): Promise<{ km: number; durationMin: number } | null> {
+async function fetchDirections(from: LatLng, to: LatLng): Promise<CachedRoute | null> {
   const url = `${DIRECTIONS_URL}?start=${from.lng},${from.lat}&goal=${to.lng},${to.lat}`;
   const res = await fetch(url, {
     headers: {
@@ -62,10 +92,17 @@ async function fetchDirections(from: LatLng, to: LatLng): Promise<{ km: number; 
   });
   if (!res.ok) return null;
   const data = (await res.json()) as {
-    route?: { traoptimal?: { summary?: { distance: number; duration: number } }[] };
+    route?: {
+      traoptimal?: { summary?: { distance: number; duration: number }; path?: [number, number][] }[];
+    };
   };
-  const summary = data.route?.traoptimal?.[0]?.summary;
-  if (!summary) return null;
-  // distance: meter, duration: millisecond
-  return { km: summary.distance / 1000, durationMin: summary.duration / 60_000 };
+  const leg = data.route?.traoptimal?.[0];
+  if (!leg?.summary) return null;
+  // distance: meter, duration: millisecond, path: [lng, lat][]
+  const path: LatLng[] = (leg.path ?? []).map(([lng, lat]) => ({ lat, lng }));
+  return {
+    km: leg.summary.distance / 1000,
+    durationMin: leg.summary.duration / 60_000,
+    path: path.length >= 2 ? path : [from, to],
+  };
 }

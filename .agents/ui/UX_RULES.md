@@ -198,3 +198,16 @@ Active/selected state visibility:
 Shortcut scope:
 UX documentation update needed:
 ```
+
+---
+
+## 16. RMC Project Conventions (클릭/플로우 최소화)
+
+이 프로젝트는 "눌러야 할 게 많고 플로우가 복잡하다"는 피드백에 따라 상호작용 최소화를 최우선으로 한다. 새 화면/액션은 아래 정책을 따른다.
+
+- **피드백은 toast로 통일.** native `alert/confirm/prompt` 금지. 성공/오류 모두 전역 토스트(`~/shared/lib/toast.store`)로. mutation 훅(`useOrderAction`/`useDeliveryAction`/`useVehicleAction`)은 두 번째 인자로 성공 메시지를 받고, 실패는 자동 토스트.
+- **확인 dialog는 영향 큰 액션에만.** 주문 취소·타설 완료 처리만 `ConfirmDialog`. 되돌리기 쉬운 액션(배차 취소·차량 삭제·일시 중단)은 즉시 실행하고, 가능하면 undo 액션이 달린 toast(예: 일시 중단 → "재개")로 보완.
+- **반복 액션은 일괄/통합.** 배차는 잔여 수량을 가용 차량으로 한 번에 채우는 일괄 배차가 기본, 한 대씩은 disclosure. 상차+출발은 "출발" 1클릭, 타설 시작+완료는 "타설 완료" 1클릭(서버에서 상태/타임스탬프 통합 처리).
+- **모달보다 인라인.** 수량 조절 등은 모달 대신 인라인 stepper(±1대). 폼은 필수 필드만 노출하고 기본값 있는 항목은 "상세 옵션"으로 접는다.
+- **진입 마찰 제거.** 프로토타입 로그인은 데모 계정 원클릭 버튼 제공.
+- **중복 제출 방지.** 액션 버튼은 `Button`의 `loading` prop으로 처리 중 비활성화 + 스피너.
