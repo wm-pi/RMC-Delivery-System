@@ -6,15 +6,18 @@ import type {
   DeliveryStatus,
   DriverLinkDto,
   LatLng,
+  RoutePathDto,
   UserRole,
 } from '@rmc/shared';
 import { DELIVERY_TRANSITIONS, formatQuantity } from '@rmc/shared';
 import { AppError } from '../../platform/errors/app-error';
 import { assertOrderOwnership, assertRole } from '../../platform/auth/authorize';
 import { signDriverToken } from '../../platform/auth/jwt';
+import { getRoutePath } from '../../platform/directions/route-info';
 import { nowIso } from '../../platform/db/client';
 import { OrderService } from '../order/order.service';
 import { PlantService } from '../plant/plant.service';
+import { SiteService } from '../site/site.service';
 import { VehicleService } from '../vehicle/vehicle.service';
 import { DeliveryRepository } from './delivery.repository';
 
@@ -93,6 +96,20 @@ export const DeliveryService = {
       `${delivery.seq}호차 ${vehicle.truckNumber} 배정 (${formatQuantity(input.quantityM3)})`,
     );
     return delivery;
+  },
+
+  /** 현재 운행 구간의 도로 경로 (지도 경로선/마커 이동용) — 주문 소유자만 */
+  async getRoute(actor: AuthUserDto, id: number): Promise<RoutePathDto> {
+    const delivery = this.getById(id);
+    const order = OrderService.getById(delivery.orderId);
+    assertOrderOwnership(actor, order);
+    const plant = PlantService.getById(order.plantId);
+    const site = SiteService.getById(order.siteId);
+    const plantPos: LatLng = { lat: plant.lat, lng: plant.lng };
+    const sitePos: LatLng = { lat: site.lat, lng: site.lng };
+    // 복귀 중이면 현장→공장, 그 외엔 공장→현장
+    const [from, to] = delivery.status === 'returning' ? [sitePos, plantPos] : [plantPos, sitePos];
+    return getRoutePath(from, to);
   },
 
   /** 업체: 기사 추적 링크(서명 토큰) 발급 — gps 모드 배차에 한함 */

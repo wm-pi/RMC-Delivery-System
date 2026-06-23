@@ -185,6 +185,12 @@ export interface DriverLinkDto {
   path: string;
 }
 
+/** 배차의 현재 운행 구간 도로 경로 */
+export interface RoutePathDto {
+  path: LatLng[];
+  source: 'directions' | 'straight';
+}
+
 /** 위치 핑 처리 결과 */
 export interface LocationPingResultDto {
   status: DeliveryStatus;

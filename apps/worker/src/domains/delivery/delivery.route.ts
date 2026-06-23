@@ -13,6 +13,11 @@ deliveryRoute.get('/:id/track-link', async (c) =>
   ok(c, await DeliveryService.getDriverLink(getUser(c), Number(c.req.param('id')))),
 );
 
+/** 현재 운행 구간의 도로 경로 (지도용) */
+deliveryRoute.get('/:id/route', async (c) =>
+  ok(c, await DeliveryService.getRoute(getUser(c), Number(c.req.param('id')))),
+);
+
 deliveryRoute.post('/:id/load', (c) => ok(c, DeliveryService.startLoading(getUser(c), Number(c.req.param('id')))));
 deliveryRoute.post('/:id/dispatch', (c) => ok(c, DeliveryService.dispatch(getUser(c), Number(c.req.param('id')))));
 deliveryRoute.post('/:id/pouring-start', (c) => ok(c, DeliveryService.startPouring(getUser(c), Number(c.req.param('id')))));
